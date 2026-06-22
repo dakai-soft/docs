@@ -1,421 +1,485 @@
-# Ghid de testare — Contracte inteligente (Smart Contract)
+# Ghid de testare manuală — Contracte inteligente (Smart Contract)
 
 **Suita de module:** `smart_contract`, `sale_contract`, `purchase_contract`, `contract_overwrite`,
 `smart_contract_blanket_order`, `smart_contract_gdpr`, `smart_contract_notification`,
 `smart_contract_upsale_downsale`
 **Platformă:** Odoo 19.0 · **Autor module:** Dakai SOFT
-**Public țintă:** dezvoltatori, QA, ingineri de mentenanță
+**Public țintă:** testeri / QA (testare manuală funcțională și de acceptanță)
 
-> **Documente conexe:** [`ghid_tehnic.md`](ghid_tehnic.md) (arhitectură și cod),
-> [`ghid_fluxuri_business.md`](ghid_fluxuri_business.md) (fluxuri de business),
-> [`manual_utilizare.md`](manual_utilizare.md) și [`ghid_procese.md`](ghid_procese.md)
-> (utilizare). Acest ghid descrie **strategia de testare**, **suita existentă**, **cum se
-> rulează testele local și în CI** și **cum se scriu teste noi**.
+> **Cum se folosește acest ghid:** conține **scenarii de test manuale** (cazuri de test) pe
+> care un tester le execută în aplicație. Fiecare scenariu are **obiectiv**, **precondiții**,
+> **pași** și **rezultat așteptat**. Pentru descrierea câmpurilor/butoanelor consultați
+> [`manual_utilizare.md`](manual_utilizare.md), iar pentru pașii operaționali detaliați
+> [`ghid_procese.md`](ghid_procese.md).
 
 ---
 
 ## Cuprins
 
-1. [Strategia de testare](#1-strategia-de-testare)
-2. [Tipuri de teste folosite](#2-tipuri-de-teste-folosite)
-3. [Harta suitei de teste](#3-harta-suitei-de-teste)
-4. [Cum rulezi testele local](#4-cum-rulezi-testele-local)
-5. [Integrarea continuă (GitHub Actions)](#5-integrarea-continuă-github-actions)
-6. [Pre-commit și linting](#6-pre-commit-și-linting)
-7. [Detaliu pe fișiere de test](#7-detaliu-pe-fișiere-de-test)
-8. [Acoperire și lacune cunoscute](#8-acoperire-și-lacune-cunoscute)
-9. [Cum scrii un test nou](#9-cum-scrii-un-test-nou)
-10. [Checklist înainte de merge](#10-checklist-înainte-de-merge)
-11. [Depanarea testelor](#11-depanarea-testelor)
+1. [Cum se folosește acest ghid](#1-cum-se-folosește-acest-ghid)
+2. [Precondiții generale și date de test](#2-precondiții-generale-și-date-de-test)
+3. [Matricea de acoperire](#3-matricea-de-acoperire)
+4. [Configurare (serii și șabloane)](#4-configurare-serii-și-șabloane)
+5. [Șabloane: capitole, articole, variabile](#5-șabloane-capitole-articole-variabile)
+6. [Contract de vânzare: creare → semnare](#6-contract-de-vânzare-creare--semnare)
+7. [Variabile dinamice și raportul PDF](#7-variabile-dinamice-și-raportul-pdf)
+8. [Trimiterea pe e-mail](#8-trimiterea-pe-e-mail)
+9. [Flux de achiziție → contracte recurente OCA](#9-flux-de-achiziție--contracte-recurente-oca)
+10. [Comenzi cadru (Blanket Orders)](#10-comenzi-cadru-blanket-orders)
+11. [Notificări și documente GDPR](#11-notificări-și-documente-gdpr)
+12. [Modificare abonament (upsale / downsale)](#12-modificare-abonament-upsale--downsale)
+13. [Reziliere](#13-reziliere)
+14. [Retenția clienților](#14-retenția-clienților)
+15. [Drepturi de acces și multi-companie](#15-drepturi-de-acces-și-multi-companie)
+16. [Scenarii negative și de validare](#16-scenarii-negative-și-de-validare)
+17. [Test de regresie rapidă (smoke test)](#17-test-de-regresie-rapidă-smoke-test)
+18. [Șablon de raportare a defectelor](#18-șablon-de-raportare-a-defectelor)
 
 ---
 
-## 1. Strategia de testare
+## 1. Cum se folosește acest ghid
 
-Suita aplică o piramidă de testare adaptată la Odoo:
+- Fiecare scenariu are un **cod** (ex. `TC-VANZARE-01`) pentru urmărire.
+- Execută pașii **în ordine**; nu sări peste precondiții.
+- Pentru fiecare scenariu notează rezultatul: **PASS** / **FAIL** / **BLOCAT**, cu observații.
+- La **FAIL**, completează șablonul de defect din cap. 18 (pași de reproducere + capturi).
+- **Prioritate**: 🔴 critic (blochează fluxul principal) · 🟡 important · 🟢 secundar.
 
-| Nivel | Ce verifică | Unde |
+> **Convenție de denumiri:** etichetele de meniu/buton sunt mixte ro/en (ex. *Sale Contracts*,
+> *Creare contract*, *Set Number*, *Incarca Linii*), în funcție de traducerea activă.
+
+---
+
+## 2. Precondiții generale și date de test
+
+Înainte de a începe seria de teste, asigură-te că:
+
+- Toate modulele suitei sunt **instalate** și utilizatorul de test are drepturile necesare
+  (vezi cap. 15).
+- Există cel puțin **o companie** configurată cu monedă și TVA implicit.
+- Sunt disponibile **date de test**:
+
+| Date de test | Recomandare |
+|---|---|
+| Partener client „Test Client SRL” | cu CUI, IBAN, e-mail și cel puțin un contact persoană |
+| Partener furnizor „Test Furnizor SRL” | cu e-mail și contact persoană |
+| Produs „Serviciu abonament” | de tip contract (bifa *Is Contract*), cu șablon de contract recurent |
+| Produs „Produs simplu” | obișnuit (fără bifa de contract) |
+| Secvență de numerotare | una pentru Contract, una pentru Act adițional, una pentru Notificare, una pentru GDPR |
+| Server SMTP | configurat (pentru testele de e-mail) sau e-mail în modul „outgoing” verificabil |
+
+> **Sfat:** rulează testele pe o **bază de date de test/staging**, nu pe producție —
+> semnarea consumă numere din serie și confirmă comenzi reale.
+
+---
+
+## 3. Matricea de acoperire
+
+| Zonă | Scenarii | Prioritate |
 |---|---|---|
-| **Unit „pur” (fără Odoo)** | Logică izolată, fără ORM și fără bază de date | `smart_contract/tools/test_legacy_migration.py` |
-| **Integrare ORM (`TransactionCase`)** | Modele, câmpuri calculate, constrângeri, metode de business, parser | `*/tests/test_*.py` |
-| **End-to-end / CI** | Instalarea modulelor + rularea tuturor testelor pe o bază reală PostgreSQL | GitHub Actions (`.github/workflows/test.yml`) |
-
-Principii:
-
-- **Determinism.** Testele de parser fixează parametrii de configurare în `setUpClass`
-  (adâncime maximă, allowlist, blocklist), ca rezultatele să nu depindă de starea bazei.
-- **Izolare prin tranzacții.** `TransactionCase` face rollback după fiecare test, deci
-  datele de test nu persistă.
-- **Etichetare.** Testele de parser folosesc `@tagged('post_install', '-at_install')`, ca să
-  ruleze **după** instalarea modulului (au nevoie de schema completă).
-- **CI selectiv.** CI detectează automat doar modulele care **au** directoare `tests/` cu
-  fișiere `test_*.py` și rulează testele lor — evită rularea inutilă a întregului Odoo.
-
----
-
-## 2. Tipuri de teste folosite
-
-### 2.1 `unittest.TestCase` (Python pur)
-
-Folosit pentru cod care **nu** depinde de ORM-ul Odoo — de exemplu convertorul de sintaxă
-veche `${...}` → `<span class="sc-var">`. Avantaj: rulează în milisecunde, fără bază de date,
-poate fi rulat și în afara mediului Odoo.
-
-### 2.2 `odoo.tests.TransactionCase`
-
-Clasa de bază standard Odoo. Fiecare metodă rulează într-o tranzacție anulată la final.
-Folosită pentru:
-
-- crearea de înregistrări (`res.partner`, `smart.contract`, `smart.contract.element`);
-- verificarea câmpurilor calculate (`_compute_*`);
-- verificarea constrângerilor și a metodelor `action_*` / business;
-- testarea parserului de variabile (rezolvare, blocare, KV, status).
-
-### 2.3 Etichete (`@tagged`)
-
-`@tagged('post_install', '-at_install')` spune lui Odoo să ruleze testul **după** instalarea
-modulelor (`post_install`) și **nu** în timpul instalării (`-at_install`). Este obligatoriu
-pentru testele care creează `smart.contract`, deoarece au nevoie de schema completă.
+| Configurare | TC-CONF-01..02 | 🔴 |
+| Șabloane | TC-SABLON-01..03 | 🔴 |
+| Contract vânzare | TC-VANZARE-01..06 | 🔴 |
+| Variabile & PDF | TC-VAR-01..04 | 🟡 |
+| E-mail | TC-MAIL-01..03 | 🟡 |
+| Achiziție / OCA | TC-ACHIZ-01..03 | 🔴 |
+| Blanket order | TC-CADRU-01 | 🟢 |
+| Notificare / GDPR | TC-DOC-01..02 | 🟡 |
+| Modificare | TC-MODIF-01..03 | 🔴 |
+| Reziliere | TC-REZIL-01..02 | 🔴 |
+| Retenție | TC-RETEN-01..02 | 🟡 |
+| Drepturi / multi-companie | TC-SEC-01..03 | 🟡 |
+| Negative / validări | TC-NEG-01..07 | 🔴 |
 
 ---
 
-## 3. Harta suitei de teste
+## 4. Configurare (serii și șabloane)
 
-Statistici globale (la momentul redactării):
+### TC-CONF-01 — Creare serie de numerotare (Contract Set) 🔴
+**Obiectiv:** verifică crearea unei serii valide pentru contracte.
+**Precondiții:** utilizator cu drepturi de configurare.
+**Pași:**
+1. Deschide `Contracts → Configuration → Contract Sets` → **New**.
+2. Completează **Set name** = „Contracte vânzare 2026”.
+3. La **Serial Sequence** creează/alege o secvență (Prefix + Padding).
+4. La **Document type** alege `Contract`. Verifică **Company**.
+5. **Save**.
 
-| Indicator | Valoare |
-|---|---|
-| Fișiere de test | 5 |
-| Clase de test | 5 |
-| Metode de test | 45 |
-| Teste `TransactionCase` (cu ORM) | 26 |
-| Teste `unittest` (Python pur) | 19 |
-| Module **cu** teste | 3 (`smart_contract`, `smart_contract_gdpr`, `smart_contract_notification`) |
-| Module **fără** teste | 5 (`sale_contract`, `purchase_contract`, `contract_overwrite`, `smart_contract_blanket_order`, `smart_contract_upsale_downsale`) |
+**Rezultat așteptat:** seria se salvează; **Current Sequence** este vizibil (gol sau ultimul
+număr); seria apare în listă.
 
-| Fișier | Clasă | Bază | Metode | Rol |
-|---|---|---|---:|---|
-| `smart_contract/tests/test_parser.py` | `TestParser` | `TransactionCase` `@tagged` | 19 | Parserul de variabile `sc-var` |
-| `smart_contract/tests/test_sale.py` | `TestSale` | `TransactionCase` | 4 | Integrarea cu comenzile de vânzare |
-| `smart_contract/tools/test_legacy_migration.py` | `TestConvertLegacyText` | `unittest.TestCase` | 19 | Convertor sintaxă veche `${...}` |
-| `smart_contract_gdpr/tests/test_smart_contract_gdpr.py` | `TestSmartContractGdpr` | `TransactionCase` | 2 | Tipul de document GDPR |
-| `smart_contract_notification/tests/test_smart_contract_notification.py` | `TestSmartContractNotification` | `TransactionCase` | 2 | Tipul de document Notificare |
-
-`tests/__init__.py` ale modulelor importă fișierele de mai sus, astfel încât Odoo să le
-descopere automat.
+### TC-CONF-02 — Serie fără secvență (validare negativă) 🟡
+**Obiectiv:** verifică obligativitatea secvenței.
+**Pași:** repetă TC-CONF-01 dar lasă **Serial Sequence** gol și încearcă să salvezi.
+**Rezultat așteptat:** apare eroarea *„Please set a serial sequence on your contract set!”*;
+înregistrarea nu se salvează.
 
 ---
 
-## 4. Cum rulezi testele local
+## 5. Șabloane: capitole, articole, variabile
 
-### 4.1 Cerințe
+### TC-SABLON-01 — Creare șablon cu capitol și articol 🔴
+**Obiectiv:** verifică structura ierarhică a unui șablon.
+**Precondiții:** există o serie de tip Contract (TC-CONF-01).
+**Pași:**
+1. `Contracts → Configuration → Contract Templates` → **New**.
+2. Completează **Name** = „Contract prestări servicii”, **Document Type** = `Contract`,
+   **Contract Type** = `Custommer`, **Contract Set** = seria creată.
+3. În fila **Elements** → **Add a line**: **Type** = `Chapter`, **Name** = „Obiectul
+   contractului”.
+4. În capitol, fila **Sub Units** → **Add a line**: **Type** = `Article`, **Name** = „Art. 1”.
+5. **Save**.
 
-- Odoo 19.0 (versiunea este fixată în fișierul `.odoo-version`).
-- PostgreSQL.
-- Modulul OCA `contract` disponibil în `addons-path` (dependență a `contract_overwrite` și a
-  fluxurilor de abonament).
+**Rezultat așteptat:** capitolul primește automat **Number** `Cap.I`, articolul `Art.1`;
+ierarhia capitol → articol este vizibilă.
 
-### 4.2 Testele Python pure (cele mai rapide, fără Odoo)
+### TC-SABLON-02 — Articol cu variabile dinamice 🔴
+**Obiectiv:** verifică inserarea variabilelor în text.
+**Pași:**
+1. Pe articolul din TC-SABLON-01, deschide fila **Content**.
+2. Scrie un text care conține: numele clientului, CUI-ul, o valoare din *Related Data* și un
+   text local — folosind variabilele din manual (ex. client, CUI, `attrelation.garantie`,
+   `localrelation.termen`).
+3. Pentru variabila locală, în fila **Attributes** adaugă cheia (Key = „termen”, tip Text, valoare).
+4. **Save**.
 
-Convertorul de sintaxă veche nu are nevoie de Odoo:
+**Rezultat așteptat:** textul se salvează cu variabilele intacte; cheia locală apare în
+**Attributes**.
 
-```bash
-cd /path/to/sales-advance
-python3 -m unittest smart_contract.tools.test_legacy_migration -v
-# sau direct:
-python3 smart_contract/tools/test_legacy_migration.py
-```
-
-### 4.3 Testele Odoo (`TransactionCase`) via `odoo-bin`
-
-Modul recomandat, identic cu CI:
-
-```bash
-python /opt/odoo/odoo-bin \
-  --addons-path=/opt/odoo/addons,/opt/dakai-soft/contract_oca,. \
-  --db_host=localhost --db_port=5432 \
-  --db_user=odoo --db_password=odoo \
-  -d test_db \
-  -i smart_contract,smart_contract_gdpr,smart_contract_notification \
-  --test-enable \
-  --test-tags /smart_contract \
-  --stop-after-init \
-  --log-level=test \
-  --max-cron-threads=0
-```
-
-- `-i` instalează modulele (la prima rulare); ulterior poți folosi `-u` pentru a le actualiza.
-- `--test-enable` activează rularea testelor la instalare/actualizare.
-- `--test-tags /smart_contract` rulează doar testele modulului `smart_contract` (prefixul `/`
-  filtrează pe modul). Schimbă numele pentru alt modul.
-- `--stop-after-init` oprește serverul după rulare (util în scripturi/CI).
-- `--max-cron-threads=0` dezactivează cron-urile în timpul testelor.
-
-Pentru a rula **un singur fișier/clasă/metodă**, folosește o etichetă mai specifică, de ex.:
-
-```bash
---test-tags /smart_contract:TestParser
---test-tags /smart_contract:TestParser.test_depth_limit
-```
-
-### 4.4 Notă despre pytest
-
-`DEVELOPER_GUIDE.md` menționează `pytest` (`python -m pytest smart_contract/tests/test_parser.py -v`).
-Aceasta funcționează **doar** dacă mediul are `pytest-odoo` configurat și un Odoo disponibil
-în `PYTHONPATH`. Pentru reproducerea exactă a CI, folosește comanda `odoo-bin` de la 4.3.
+### TC-SABLON-03 — Renumerotare după reordonare 🟢
+**Obiectiv:** verifică recalcularea numerelor.
+**Pași:** adaugă un al doilea capitol și mai multe articole, apoi schimbă ordinea prin tragere
+și verifică numerotarea (pe contract se poate folosi și butonul **Re-Order**).
+**Rezultat așteptat:** capitolele se renumerotează cu cifre romane (`Cap.I`, `Cap.II`),
+articolele continuu (`Art.1`, `Art.2`…), alineatele cu litere (`Alin.a`…).
 
 ---
 
-## 5. Integrarea continuă (GitHub Actions)
+## 6. Contract de vânzare: creare → semnare
 
-Există două workflow-uri în `.github/workflows/`.
+### TC-VANZARE-01 — Creare contract din comanda de vânzare 🔴
+**Obiectiv:** verifică generarea contractului din ofertă.
+**Precondiții:** o comandă de vânzare cu „Test Client SRL” și cel puțin o linie.
+**Pași:**
+1. Deschide comanda de vânzare → apasă **Creare contract** în antet.
+2. Apasă butonul statistic **Contracte**.
 
-### 5.1 `ci.yml` — lint (pe orice push/PR)
+**Rezultat așteptat:** se creează un contract **Draft** de tip *Sales* cu clientul preluat;
+PDF-ul draft este atașat comenzii; butonul statistic **Contracte** apare cu contor 1.
 
-```
-Job: lint
-  - Python 3.12
-  - pip install ruff
-  - ruff check . --select E722,F811,F821,F632
-```
+### TC-VANZARE-02 — Populare din șablon 🔴
+**Obiectiv:** verifică copierea conținutului din șablon.
+**Pași:**
+1. Pe contractul Draft, alege **Contract Template** = șablonul din TC-SABLON-01.
+2. Completează **Legal Customer Person** (un contact al clientului).
+3. Apasă **Populate** → confirmă.
+4. Deschide fila **Articles**.
 
-Rulează la **fiecare** push și PR. Nu rulează teste, doar verificări statice (vezi §6).
+**Rezultat așteptat:** structura de capitole/articole din șablon apare pe contract; compania,
+**Document Type**, **Contract Type** și **Contract Set** s-au preluat din șablon.
 
-### 5.2 `test.yml` — teste unitare Odoo
+### TC-VANZARE-03 — Preluare perioadă/monedă din produse de contract 🟡
+**Obiectiv:** verifică `sale_contract`.
+**Precondiții:** comanda conține „Serviciu abonament” cu **Start/End Date** pe linii.
+**Pași:** creează contractul (TC-VANZARE-01) și verifică **Start Date / End Date / Currency** pe
+contract.
+**Rezultat așteptat:** Start Date = cea mai mică dată de început, End Date = cea mai mare dată de
+sfârșit, Currency = moneda comenzii.
 
-- **Declanșare:** push și PR pe ramuri care se potrivesc cu `*.0` (ex. `19.0`).
-- **Concurență:** rulările anterioare pe aceeași ramură sunt anulate (`cancel-in-progress`).
-- **Servicii:** PostgreSQL 15 (`odoo`/`odoo`).
-- **Python:** 3.11.
-- **Pași:**
-  1. Citește versiunea din `.odoo-version`.
-  2. Clonează Odoo la tag-ul versiunii (`git clone --branch 19.0 ... /opt/odoo`).
-  3. Instalează dependențele de sistem (`libldap2-dev`, `libsasl2-dev`, `libssl-dev`,
-     `build-essential`) și `pip install -r /opt/odoo/requirements.txt`.
-  4. **Auto-detectează modulele cu teste**: caută fișiere `__manifest__.py` și verifică dacă
-     directorul `tests/` conține `test_*.py`; produce o listă JSON de module.
-  5. Rulează `odoo-bin` cu `--test-enable --test-tags /<modul> --stop-after-init`.
+### TC-VANZARE-04 — Fluxul de stări Ready → Sign 🔴
+**Obiectiv:** verifică tranzițiile de stare și alocarea numărului.
+**Pași:**
+1. Pe contractul populat (Draft), apasă **Parse Variables** (dacă *Variable Count* > 0).
+2. Apasă **Ready** → starea devine **Prepared**; verifică **Act Date** completat automat.
+3. Completează **Sign Date** și apasă **Sign**.
 
-> **Important pentru contributori:** un modul nou intră automat în CI doar dacă are
-> `tests/test_*.py`. Dacă adaugi teste într-un modul care nu avea, asigură-te că există
-> `tests/__init__.py` care le importă, altfel nu sunt descoperite.
+**Rezultat așteptat:** starea devine **Signed**; **Document No.** apare în titlu (număr din
+serie); comenzile de vânzare legate aflate în Draft/Sent sunt **confirmate automat**.
 
-> **Important pentru ramuri:** workflow-ul de teste rulează **doar** pe ramuri `*.0`. Pe o
-> ramură de feature (ex. `claude/...`) rulează doar lint-ul. Pentru a vedea testele rulând,
-> ținta PR-ului trebuie să fie o ramură `*.0` (ex. `19.0`).
+### TC-VANZARE-05 — Set Number fără semnare 🟡
+**Obiectiv:** verifică alocarea numărului fără semnare.
+**Pași:** pe un contract **Prepared** fără număr, apasă **Set Number**.
+**Rezultat așteptat:** numărul se alocă din serie; comenzile legate Draft/Sent se confirmă;
+documentul rămâne Prepared.
 
----
-
-## 6. Pre-commit și linting
-
-Fișierul `.pre-commit-config.yaml` configurează:
-
-- `trailing-whitespace`, `end-of-file-fixer` — igienă de fișiere;
-- `check-yaml`, `check-xml` — validare YAML/XML (manifest, vederi, date);
-- `debug-statements` — blochează `pdb`/`breakpoint` rămase în cod;
-- `ruff` cu regulile **E722** (bare `except`), **F811** (redefinire), **F821** (nume
-  nedefinit), **F632** (`is` cu literal).
-
-Instalare și rulare:
-
-```bash
-pip install pre-commit
-pre-commit install          # rulează automat la fiecare commit
-pre-commit run --all-files  # rulare manuală pe tot proiectul
-```
-
-Aceleași reguli ruff rulează și în `ci.yml`, deci rularea locală a pre-commit previne
-eșecurile de lint în CI.
+### TC-VANZARE-06 — Recepție și anulare 🟡
+**Obiectiv:** verifică Received și Cancel.
+**Pași:**
+1. Pe un contract **Signed**, completează **Reception Date** → apasă **Received**.
+2. Pe alt contract Signed, apasă **Cancel**.
+**Rezultat așteptat:** primul trece în **Received**; al doilea trece în **Terminated** și
+**comenzile de vânzare legate sunt anulate**.
 
 ---
 
-## 7. Detaliu pe fișiere de test
+## 7. Variabile dinamice și raportul PDF
 
-### 7.1 `smart_contract/tests/test_parser.py` — `TestParser` (19 teste)
+### TC-VAR-01 — Rezolvarea variabilelor 🟡
+**Obiectiv:** verifică înlocuirea variabilelor cu valori reale.
+**Pași:** pe un contract populat cu variabile, notează **Variable Count**, apasă
+**Parse Variables**, apoi recitește articolele.
+**Rezultat așteptat:** variabilele sunt înlocuite cu valorile reale (nume client, CUI, valori);
+**Variable Count** scade (ideal la 0).
 
-Testează inima funcțională a suitei: **parserul de variabile** bazat pe span-uri
-`<span class="sc-var">`. `setUpClass` fixează parametrii de configurare și creează un partener
-(`Acme Test SRL`) și un contract de tip vânzare. Helper-ul `_span()` construiește marcaje HTML,
-iar `_make_element()` creează un `smart.contract.element` legat de contractul de test.
+### TC-VAR-02 — Variabilă nerezolvabilă 🟡
+**Obiectiv:** verifică comportamentul la cheie inexistentă.
+**Pași:** introdu în text o variabilă cu o cheie KV care **nu** există, salvează, apasă
+**Parse Variables**.
+**Rezultat așteptat:** variabila rămâne marcată ca nerezolvată (evidențiată); la tipărire
+(TC-VAR-04) apare **mascată** (liniuță), nu ca text de cod.
 
-| Test | Ce verifică |
-|---|---|
-| `test_pull_contract_field` | Rezolvarea `contract.partner_id.name` → span devine `sc-var--resolved`, atributele `data-*` sunt eliminate |
-| `test_pull_nested_relation` | `_resolve_var()` traversează relații imbricate |
-| `test_blocked_env` | `ParsePathError` la accesul `contract.env` (câmp blocat) |
-| `test_blocked_cr` | `ParsePathError` la accesul `contract._cr` |
-| `test_blocked_via_parse_marks_unresolved` | Accesul blocat marchează span-ul `sc-var--unresolved`, păstrează `data-*`; eroarea apare în `_resolve_status()` |
-| `test_add_on_contract_forbidden` | `ParsePathError` pentru sensul `add` pe câmpuri de contract (doar KV permis) |
-| `test_method_not_in_allowlist` | `ParsePathError` dacă metoda nu e în allowlist |
-| `test_method_allowed_after_param` | O metodă din allowlist (`set_name`) se apelează fără eroare |
-| `test_depth_limit` | `ParsePathError` la depășirea adâncimii maxime |
-| `test_field_blocklist` | `ParsePathError` pentru câmp aflat în blocklist |
-| `test_kv_pull_attrelation` | Citirea KV `attrelation.rent` la nivel de contract |
-| `test_kv_pull_localrelation` | Citirea KV `localrelation.note` la nivel de element |
-| `test_kv_missing_returns_none` | Cheie KV inexistentă → `None` |
-| `test_sync_add_placeholders_attrelation` | `_sync_add_placeholders()` creează KV de contract din span-uri `add`; idempotent |
-| `test_sync_add_placeholders_localrelation` | Idem la nivel de element, cu maparea corectă a tipului |
-| `test_status_counts` | `_resolve_status()` numără corect rezolvate/nerezolvate |
-| `test_count_sc_var_spans` | `_count_sc_var_spans()` numără span-urile, ignoră `${}` vechi |
-| `test_resolved_vs_unresolved_attrs` | Span-urile rezolvate pierd `data-*`, cele nerezolvate le păstrează |
-| `test_contract_unresolved_count_compute` | `_compute_variable_status()` + `action_show_unresolved_variables()` |
+### TC-VAR-03 — Contor variabile nerezolvate 🟢
+**Obiectiv:** verifică indicatorul de variabile rămase.
+**Pași:** pe un contract cu variabile nerezolvate, folosește acțiunea de afișare a variabilelor
+nerezolvate (dacă e disponibilă în UI).
+**Rezultat așteptat:** se listează elementele cu variabile nerezolvate.
 
-### 7.2 `smart_contract/tests/test_sale.py` — `TestSale` (4 teste)
-
-`setUpClass` creează un partener și o `sale.order`.
-
-| Test | Ce verifică |
-|---|---|
-| `test_sm_action_create_contract` | `sm_action_create_contract()` creează un `smart.contract` legat |
-| `test_action_open_smart_contract` | `action_open_smart_contract()` întoarce acțiunea cu domeniul corect |
-| `test_action_add_attachment` | Stub (placeholder) — întoarce `True` |
-| `test_action_send_contract_via_message_compose` | Stub (placeholder) — întoarce `True` |
-
-> Ultimele două sunt **stub-uri** — locuri rezervate pentru teste viitoare. Recomandare:
-> înlocuiește-le cu verificări reale (generarea atașamentului PDF, deschiderea wizard-ului).
-
-### 7.3 `smart_contract/tools/test_legacy_migration.py` — `TestConvertLegacyText` (19 teste)
-
-`unittest.TestCase` **fără** Odoo. Testează `convert_legacy_text()` / `convert_legacy_expr()`,
-care transformă sintaxa veche `${...}` în span-uri `sc-var`. Acoperă:
-
-- câmpuri de contract simple și imbricate (`${contract.partner_id.name}`);
-- extragerea numelor de metode (`${contract.get_total()}`), inclusiv deduplicarea;
-- maparea coloanelor pentru `attrelation`/`localrelation` la `data-type`
-  (`number`→monetary, `number_int`→integer, `number_float`→float, `data`→datetime,
-  `data_date`→date, necunoscut→text);
-- cazuri „noop”: namespace necunoscut, text simplu, `${contract}` fără cale;
-- intrări goale/`None`.
-
-### 7.4 `smart_contract_gdpr` și `smart_contract_notification` (câte 2 teste)
-
-Ambele creează un `smart.contract` cu `document_type` specific (`gdpr`, respectiv `notificare`)
-și verifică cele două câmpuri calculate care impun seria obligatorie:
-
-- `_compute_show_regulation()` → `True`;
-- `_get_regulation_required_compute()` → `True`.
+### TC-VAR-04 — Raportul PDF al contractului 🟡
+**Obiectiv:** verifică generarea PDF.
+**Pași:** pe un contract semnat, din meniul de tipărire alege raportul **Contract**.
+**Rezultat așteptat:** PDF cu titlul „Contract Nr. …”, structura de capitole/articole numerotate,
+mențiunea de încheiere cu data semnării și blocurile **Provider** / **Client**; variabilele
+nerezolvate apar mascate. Pentru Draft titlul apare ca „DRAFT …”.
 
 ---
 
-## 8. Acoperire și lacune cunoscute
+## 8. Trimiterea pe e-mail
 
-**Bine acoperit:**
+### TC-MAIL-01 — Trimitere individuală 🟡
+**Obiectiv:** verifică asistentul *Send*.
+**Precondiții:** clientul are e-mail; contract în Draft/Prepared.
+**Pași:** apasă **Send** → verifică **To**, **Subject**, corpul mesajului precompletat și
+atașamentul PDF → apasă **Send**.
+**Rezultat așteptat:** mesajul cu PDF atașat se postează în chatter și se trimite
+destinatarilor.
 
-- Parserul de variabile (rezolvare, securitate: blocklist/allowlist/adâncime, KV, status).
-- Migrarea sintaxei vechi `${...}`.
-- Crearea contractului din comanda de vânzare (parțial).
-- Câmpurile de control ale tipurilor GDPR/Notificare.
+### TC-MAIL-02 — Trimitere în masă 🟢
+**Obiectiv:** verifică trimiterea în lot.
+**Pași:** în lista de contracte bifează 3 contracte → **Send** din antet → verifică rezumatul
+*Contracts to send* → **Send**.
+**Rezultat așteptat:** se trimit individual; contractele al căror partener **nu are e-mail**
+sunt marcate „(fără email)” și sunt **sărite**.
 
-**Lacune (oportunități de teste noi):**
-
-1. **`purchase_contract`** — generarea contractelor recurente OCA la semnare și blocarea
-   facturării directe **nu** au teste. (Risc de business ridicat.)
-2. **`smart_contract_upsale_downsale`** — execuția liniilor de abonament (Modificare),
-   rezilierea și fluxul de Retenție **nu** au teste.
-3. **`contract_overwrite`** — conversia valutară la facturare și „Total Opened Lines Amount”
-   **nu** au teste.
-4. **`smart_contract_blanket_order`** — atașarea automată a comenzilor din acord **nu** are teste.
-5. **Fluxul de stări** (`Ready`/`Set Number`/`Sign`/`Cancel`) și **alocarea numărului** din
-   serie nu au teste end-to-end dedicate.
-6. **Raportul PDF** și **trimiterea pe e-mail** nu sunt testate (stub-uri în `test_sale.py`).
-
----
-
-## 9. Cum scrii un test nou
-
-### 9.1 Structura unui modul de test
-
-```
-smart_contract_upsale_downsale/
-└── tests/
-    ├── __init__.py          # from . import test_modificare
-    └── test_modificare.py
-```
-
-`__init__.py`:
-
-```python
-from . import test_modificare
-```
-
-### 9.2 Șablon de test `TransactionCase`
-
-```python
-# -*- coding: utf-8 -*-
-from odoo.tests import TransactionCase, tagged
-
-
-@tagged('post_install', '-at_install')
-class TestModificare(TransactionCase):
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.partner = cls.env['res.partner'].create({'name': 'Client Test SRL'})
-        cls.parent = cls.env['smart.contract'].create({
-            'partner_id': cls.partner.id,
-            'contract_type': 'sale',
-            'type': 'custommer',
-        })
-
-    def test_incarca_linii_abonament(self):
-        act = self.env['smart.contract'].create({
-            'partner_id': self.partner.id,
-            'type': 'modificare',
-            'parent_id': self.parent.id,
-        })
-        act.action_incarca_linii()           # metoda de business reală
-        self.assertTrue(act.subscription_line_ids,
-                        "Liniile de abonament ar trebui încărcate")
-```
-
-### 9.3 Bune practici (specifice acestui proiect)
-
-- **Folosește `setUpClass`** pentru date partajate (mai rapid decât `setUp`).
-- **Etichetează cu `post_install`** orice test care creează `smart.contract`.
-- **Fixează configurarea** dacă testezi parserul: setează
-  `smart_contract.parser.max_depth` / `method_allowlist` / `field_blocklist` în `setUpClass`,
-  ca în `test_parser.py`.
-- **Verifică efectul, nu doar lipsa erorii** — evită stub-urile care `return True`.
-- **Mesaje de aserțiune** descriptive (al doilea argument la `assertTrue/assertEqual`).
-- **Adaugă `tests/__init__.py`** ca testele să intre automat în detecția CI.
-- Pentru parser, refolosește helper-ele `_span()` și `_make_element()` ca model.
-
-### 9.4 Rularea testului nou
-
-```bash
-python /opt/odoo/odoo-bin --addons-path=...,. -d test_db \
-  -u smart_contract_upsale_downsale \
-  --test-enable --test-tags /smart_contract_upsale_downsale \
-  --stop-after-init --log-level=test
-```
+### TC-MAIL-03 — Partener fără e-mail (validare) 🟢
+**Obiectiv:** verifică tratarea lipsei e-mailului.
+**Pași:** încearcă trimiterea individuală pentru un contract al cărui partener nu are e-mail.
+**Rezultat așteptat:** sistemul semnalează lipsa destinatarului (nu trimite un e-mail gol).
 
 ---
 
-## 10. Checklist înainte de merge
+## 9. Flux de achiziție → contracte recurente OCA
 
-- [ ] `pre-commit run --all-files` trece (ruff + verificări XML/YAML).
-- [ ] Toate cele 45 de teste existente trec.
-- [ ] Testele noi sunt importate în `tests/__init__.py`.
-- [ ] Testele noi sunt etichetate `post_install` dacă folosesc ORM-ul.
-- [ ] PR-ul țintește o ramură `*.0` dacă vrei ca workflow-ul de teste să ruleze.
-- [ ] Nu există stub-uri `return True` noi.
-- [ ] Modulul OCA `contract` este disponibil în `addons-path` la rularea locală.
+### TC-ACHIZ-01 — Date pe liniile comenzii de achiziție 🟡
+**Obiectiv:** verifică `purchase_contract`.
+**Pași:** creează o comandă de achiziție cu „Serviciu abonament”; pe linii completează
+**Start Date** și **End Date**.
+**Rezultat așteptat:** coloanele Start/End Date apar pe linii și se salvează.
+
+### TC-ACHIZ-02 — Generarea contractelor recurente la semnare 🔴
+**Obiectiv:** verifică automatizarea la *Sign*.
+**Pași:**
+1. Pe comanda de achiziție apasă **Creare contract**.
+2. Pe contract: alege șablonul, **Populate**, **Parse Variables**.
+3. **Ready** → completează **Sign Date** → **Sign**.
+4. Verifică fila **Purchase Orders** și caută contractele recurente OCA (`contract.contract`).
+
+**Rezultat așteptat:** la semnare se generează automat contracte recurente OCA (câte unul per
+șablon de produs), cu linii, termen de plată, poziție fiscală și monedă din comandă; perioada se
+aliniază la contractul inteligent; comenzile de achiziție se confirmă.
+
+### TC-ACHIZ-03 — Blocarea facturării directe (validare) 🔴
+**Obiectiv:** verifică interdicția de facturare directă.
+**Pași:** încearcă să creezi factura direct dintr-o comandă de achiziție cu produse de tip
+contract.
+**Rezultat așteptat:** apare eroarea *„You cannot create an invoice from a purchase order that
+contains contract products. Please create a contract instead.”*.
 
 ---
 
-## 11. Depanarea testelor
+## 10. Comenzi cadru (Blanket Orders)
 
-| Simptom | Cauză probabilă | Soluție |
-|---|---|---|
-| `ParsePathError` neașteptat în teste | Allowlist/blocklist/adâncime moștenite din baza de date | Fixează parametrii în `setUpClass` (vezi `test_parser.py`) |
-| Testul nu rulează în CI | Modulul nu are `tests/test_*.py` sau lipsește `__init__.py` | Adaugă fișierul de test și importul; verifică detecția din `test.yml` |
-| `KeyError: 'smart.contract'` la `at_install` | Test rulat în timpul instalării | Adaugă `@tagged('post_install', '-at_install')` |
-| Eroare la import `contract.*` | Modulul OCA `contract` lipsește din `addons-path` | Adaugă calea către `contract_oca` (vezi `--addons-path` din CI) |
-| `_parse_status AttributeError` | Cod care folosește vechiul atribut eliminat | Folosește metoda `_resolve_status()` (vezi `PARSER_FIXES.md`) |
-| Workflow-ul de teste nu pornește | Ramura nu se potrivește cu `*.0` | Țintește un PR către `19.0` sau altă ramură `*.0` |
-| Lint eșuează în CI dar local nu | `pre-commit` nu este instalat local | `pip install pre-commit && pre-commit install` |
+### TC-CADRU-01 — Legarea automată a comenzilor din acord 🟢
+**Obiectiv:** verifică `smart_contract_blanket_order`.
+**Precondiții:** modul instalat; contract inteligent semnat cu furnizorul.
+**Pași:**
+1. Pe un acord de achiziție completează câmpul **Smart Contract** cu contractul furnizorului.
+2. Creează o comandă de achiziție **din acord**.
+3. Deschide contractul, fila **Purchase Orders**.
+**Rezultat așteptat:** comanda creată din acord apare automat atașată contractului (dacă firmele
+coincid).
 
-> **Referințe suplimentare:** `DEVELOPER_GUIDE.md` (rezumatul corecțiilor de parser),
-> `smart_contract/PARSER_FIXES.md` (detaliu pe fiecare corecție și comenzi de verificare),
-> `smart_contract/tests/test_parser.py` (exemple de utilizare a parserului).
+---
+
+## 11. Notificări și documente GDPR
+
+### TC-DOC-01 — Emiterea unei notificări 🟡
+**Obiectiv:** verifică tipul de document Notificare.
+**Precondiții:** serie de tip Notificare + șablon de tip Notificare.
+**Pași:**
+1. `Contracts → Additional Contracts` → **New** → **Document Type** = `Notificare`.
+2. Alege **Contract parent**, **Contract Set** de tip Notificare, șablonul → **Populate**.
+3. **Parse Variables** → **Ready** → **Sign Date** → **Sign**.
+**Rezultat așteptat:** seria este obligatorie; după numerotare denumirea devine
+„Notification *nr* for *nr contract părinte*”; tipărirea cu raportul **Contract** funcționează.
+
+### TC-DOC-02 — Emiterea unui document GDPR 🟡
+**Obiectiv:** verifică tipul de document GDPR.
+**Pași:** identic cu TC-DOC-01, dar **Document Type** = `GDPR` și serie/șablon de tip GDPR.
+**Rezultat așteptat:** seria GDPR este obligatorie; denumirea devine „GDPR *nr* for *nr contract
+părinte*”; PDF-ul se generează corect.
+
+---
+
+## 12. Modificare abonament (upsale / downsale)
+
+### TC-MODIF-01 — Încărcarea liniilor de abonament 🔴
+**Obiectiv:** verifică *Incarca Linii*.
+**Precondiții:** modul `smart_contract_upsale_downsale` instalat; contract părinte cu abonamente
+OCA active.
+**Pași:**
+1. `Contracts → Additional Contracts` → **New** → **Document Type** = `Modificare`.
+2. Alege **Contract parent** → fila **Subscription Lines** → grupul Control → **Incarca Linii**.
+**Rezultat așteptat:** se încarcă liniile de abonament active (în curs, viitoare, de reînnoit)
+ale contractului și actelor sale.
+
+### TC-MODIF-02 — Upsale (creștere preț/cantitate) 🔴
+**Obiectiv:** verifică execuția modificării la semnare.
+**Pași:**
+1. Pe o linie încărcată, bifează **Activ**, mărește **Pret unitar (vanzare)** și/sau
+   **Cantitate**.
+2. Verifică indicatorii **Diferenta linii curente** și **Rezultat dupa aplicare**.
+3. **Ready** → **Sign Date** → **Sign**.
+4. Deschide abonamentul OCA și verifică linia.
+**Rezultat așteptat:** la semnare, noua cantitate/preț și data următoarei facturi se scriu în
+linia de abonament; execuția este consemnată în chatter.
+
+### TC-MODIF-03 — Downsale / oprire de linie 🟡
+**Obiectiv:** verifică oprirea unei linii debifate.
+**Pași:** pe o linie încărcată **debifează Activ** (sau folosește **Sterge linii**), apoi
+semnează.
+**Rezultat așteptat:** linia debifată este **oprită** la următoarea facturare; indicatorul
+*Renuntare inainte de termen* reflectă corect situația.
+
+---
+
+## 13. Reziliere
+
+### TC-REZIL-01 — Reziliere completă 🔴
+**Obiectiv:** verifică încheierea contractului și a abonamentelor.
+**Precondiții:** contract părinte cu abonamente active; nomenclator *Motiv Retentie* configurat.
+**Pași:**
+1. `Contracts → Additional Contracts` → **New** → **Document Type** = `Reziliere`.
+2. Alege **Contract parent**, completează **Data Reziliere** și **Motiv Reziliere**.
+3. **Ready** → **Sign Date** → **Sign**.
+**Rezultat așteptat:** la semnare, toate liniile active se **opresc** la data rezilierii,
+contractele recurente OCA primesc dată de sfârșit, iar contractul părinte și actele lui trec în
+**Terminated**.
+
+### TC-REZIL-02 — Reziliere fără contract părinte (validare) 🟡
+**Obiectiv:** verifică obligativitatea părintelui.
+**Pași:** încearcă să creezi/semnezi o reziliere fără **Contract parent**.
+**Rezultat așteptat:** apare eroarea *„Un contract de reziliere trebuie sa aiba un contract
+parinte!”*.
+
+---
+
+## 14. Retenția clienților
+
+### TC-RETEN-01 — Retenție câștigată (ofertă acceptată) 🟡
+**Obiectiv:** verifică generarea actului adițional.
+**Precondiții:** nomenclator *Motiv Retentie* configurat; șablon de act adițional „de ofertă”.
+**Pași:**
+1. `Vânzări → Orders → Retentie → Retentii Noi` → **New**.
+2. Alege **Client**, **Contract**, **Abonament**, **Motiv Reziliere**, **Data primire cerere
+   reziliere**; la **Sablon Act Aditional Nou** alege șablonul de ofertă (NU unul de reziliere).
+3. Scrie textul în fila **Rezolutie** → **Save** → **Finalizare**.
+**Rezultat așteptat:** se creează automat un **act adițional Draft** populat din șablon, cu
+liniile de abonament încărcate și rezoluția în chatter; câmpul **Act aditional rezultat** este
+completat; rezultatul devine **Castigat**; **Agent** și **Agent Suport** au fost preluați automat
+la creare.
+
+### TC-RETEN-02 — Retenție pierdută (reziliere) 🟡
+**Obiectiv:** verifică marcarea ca pierdut.
+**Pași:** repetă TC-RETEN-01 dar alege un șablon al cărui nume conține „rezili” și completează
+**Data reziliere**; **Finalizare**.
+**Rezultat așteptat:** rezultatul devine **Pierdut**; *Data reziliere* este obligatorie;
+înregistrarea apare în *Retentii Pierdute* și în *Raport Retentii*.
+
+---
+
+## 15. Drepturi de acces și multi-companie
+
+### TC-SEC-01 — Vânzător vede doar contractele proprii 🟡
+**Obiectiv:** verifică regula „Own Documents”.
+**Pași:** autentificat ca vânzător cu drept doar pe documente proprii, deschide lista de
+contracte.
+**Rezultat așteptat:** vede doar contractele la care este **Responsible** (sau fără responsabil),
+nu și ale altora.
+
+### TC-SEC-02 — Șabloanele sunt doar citire pentru utilizatorul standard 🟢
+**Obiectiv:** verifică restricția pe șabloane.
+**Pași:** ca utilizator intern standard, încearcă să modifici un șablon.
+**Rezultat așteptat:** șablonul este accesibil **doar pentru citire** (fără salvare).
+
+### TC-SEC-03 — Izolare multi-companie 🟡
+**Obiectiv:** verifică filtrarea pe companie.
+**Precondiții:** două companii; documente în fiecare.
+**Pași:** cu utilizatorul comutat pe Compania A, deschide listele și câmpurile de legătură
+(șablon, serie, acord de achiziție).
+**Rezultat așteptat:** se văd doar documentele/seriile/șabloanele Companiei A; câmpurile de
+legătură sunt filtrate pe companie.
+
+---
+
+## 16. Scenarii negative și de validare
+
+| Cod | Scenariu | Acțiune | Rezultat așteptat |
+|---|---|---|---|
+| TC-NEG-01 🔴 | Semnare fără Sign Date | apasă **Sign** fără *Sign Date* | eroare *„Signed date is not set!”* |
+| TC-NEG-02 🔴 | Act adițional cu părinte fără număr | adu actul la Prepared când părintele nu are număr | eroare *„Please set a number for parent contract first!”* |
+| TC-NEG-03 🔴 | Contract fără serie | salvează un contract de tip Contract fără *Contract Set* | eroare *„Please set a serial sequence on your contract set!”* |
+| TC-NEG-04 🟡 | Reziliere fără părinte | vezi TC-REZIL-02 | eroare despre contractul părinte obligatoriu |
+| TC-NEG-05 🟡 | Facturare directă PO cu produse de contract | vezi TC-ACHIZ-03 | eroare de blocare a facturării |
+| TC-NEG-06 🟢 | Populate pe contract cu conținut | apasă **Populate** pe un contract cu articole existente | conținutul existent este **înlocuit** (avertizare: nu folosi pe contracte cu modificări manuale) |
+| TC-NEG-07 🟢 | Reziliere fără Motiv/Data | semnează reziliere fără *Motiv Reziliere* sau *Data Reziliere* | sistemul cere completarea câmpurilor obligatorii |
+
+---
+
+## 17. Test de regresie rapidă (smoke test)
+
+Set minim de verificat după fiecare actualizare/deploy (≈ 15 minute):
+
+1. **TC-CONF-01** — se poate crea o serie.
+2. **TC-SABLON-01** — se poate crea un șablon cu capitol + articol.
+3. **TC-VANZARE-01 → 04** — creare contract din comandă, Populate, Parse, Ready, Sign (cu număr).
+4. **TC-VAR-04** — PDF-ul contractului semnat se generează corect.
+5. **TC-MAIL-01** — trimiterea pe e-mail funcționează.
+6. **TC-ACHIZ-02** — semnarea unui contract de achiziție generează abonamente OCA.
+7. **TC-MODIF-02** — un upsale se aplică pe abonament la semnare.
+8. **TC-REZIL-01** — o reziliere oprește abonamentele și trece părintele în Terminated.
+
+Dacă oricare eșuează, oprește promovarea și raportează defectul (cap. 18).
+
+---
+
+## 18. Șablon de raportare a defectelor
+
+```
+[ID defect]      DEF-____
+[Scenariu]       TC-________ (codul cazului de test)
+[Prioritate]     Critic / Important / Secundar
+[Mediu]          Versiune Odoo / bază de date / companie / utilizator(rol)
+[Precondiții]    starea inițială a datelor
+[Pași de reproducere]
+  1.
+  2.
+  3.
+[Rezultat actual]      ce s-a întâmplat (cu textul exact al erorii, dacă există)
+[Rezultat așteptat]    ce trebuia să se întâmple
+[Atașamente]           capturi de ecran / PDF / log
+[Observații]           reproductibil mereu / intermitent; soluție de ocolire
+```
+
+> **Referințe:** [`manual_utilizare.md`](manual_utilizare.md) (câmpuri și butoane),
+> [`ghid_procese.md`](ghid_procese.md) (pași operaționali), [`ghid_fluxuri_business.md`](ghid_fluxuri_business.md)
+> (context de business), [`ghid_tehnic.md`](ghid_tehnic.md) (detalii tehnice).
